@@ -1,0 +1,70 @@
+/* This is a generic payload parser for LoRaWAN. It will work for any network server.
+ ** The code finds the "payload" variable, sent by your sensor, and parses it if it exists.
+ ** The content of the payload variable is always an Hexadecimal value.
+ **
+ ** Note: Additional variables can be created by the Network Server and sent directly to the bucket. Normally they aren't handled here.
+ **
+ ** Testing:
+ ** You can do manual tests to the parse by using the Device Emulator. Copy and Paste the following JSON:
+ ** [{ "variable": "data", "value": "0109611395" }]
+ */
+
+// Search the payload variable in the payload global variable. Its contents are always [ { variable, value...}, {variable, value...} ...]
+const payload_raw = payload.find(
+  (x) =>
+    x.variable === "payload_raw" ||
+    x.variable === "payload" ||
+    x.variable === "data"
+);
+
+if (payload_raw) {
+  try {
+    // Convert the data from Hex to Javascript Buffer.
+    const buffer = Buffer.from(payload_raw.value, "hex");
+
+    // Parse the PIR motion (1 byte, byte 0)
+    const motion = buffer.readUInt8(0);
+
+    // Parse luminosity (1 byte, byte 2)
+    const luminosity = buffer.readUInt8(2);
+
+    // Parse temperature (1 byte, byte 3)
+    const temp = buffer.readUInt8(3);
+
+    // Parse humidity (1 byte, byte 4)
+    const humi = buffer.readUInt8(4);
+
+    let motionStatus;
+
+    if (motion === 1) {
+      motionStatus = 'INTRUSION';
+    } else {
+      motionStatus = 'RAS';
+    }
+
+    // Create the data array with parsed values
+    const data = [
+      { variable: "motion", value: motion, unit: " " },
+      { variable: "luminosity", value: luminosity, unit: "%" },
+      { variable: "temp", value: temp, unit: "°C" },
+      { variable: "humi", value: humi, unit: "%" },
+      { variable: "statusmotion", value: motionStatus, unit: " " }
+    ];
+
+    // Concatenate the content sent by your device with the content generated in this payload parser.
+    // It also adds the fields "group" and "time" to it, copying from your sensor data.
+    payload = payload.concat(
+      data.map((x) => ({
+        ...x,
+        group: String(payload_raw.serie || payload_raw.group),
+        // time: String(payload_raw.time),
+      }))
+    );
+  } catch (e) {
+    // Print the error to the Live Inspector.
+    console.error(e);
+
+    // Return the variable parse_error for debugging.
+    payload = [{ variable: "parse_error", value: e.message }];
+  }
+}
